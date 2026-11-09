@@ -1,0 +1,33 @@
+{
+  "name": "tabvault",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "oxlint",
+    "predeploy": "tsc -b && vite build --base=/tabvault/",
+    "deploy": "gh-pages -d dist --nojekyll -m \"deploy: TabVault\""
+  },
+  "dependencies": {
+    "@coderline/alphatab": "^1.9.0",
+    "idb": "^8.0.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5"
+  },
+  "devDependencies": {
+    "@coderline/alphatab-vite": "^1.9.0",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "gh-pages": "^6.3.0",
+    "oxlint": "^1.90.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6"
+  },
+  "description": "Guarda, escucha y sigue tus tablaturas de guitarra, bajo y batería."
+}
