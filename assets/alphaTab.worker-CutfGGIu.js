@@ -1,0 +1,1 @@
+import{i as e}from"./alphaTab.core-JBgB-kHk.js";e.initializeWorker();
