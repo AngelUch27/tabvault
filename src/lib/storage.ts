@@ -1,16 +1,16 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import { SAMPLE_TABS } from './samples'
-import type { BackupFile, Tab } from './types'
+import { SAMPLE_SONGS } from './samples'
+import { INSTRUMENT_ORDER, type BackupFile, type Instrument, type Song } from './types'
 
 /**
- * Capa de almacenamiento. Hoy usa IndexedDB (local al navegador, gratis, sin servidor).
- * Cuando se quiera compartir entre dispositivos basta con implementar esta misma
- * interfaz sobre Supabase u otro backend y cambiar `store` al final del archivo.
+ * Storage layer. Today it uses IndexedDB (local to the browser, free, no server).
+ * To sync across devices, implement this same interface on top of Supabase or
+ * another backend and swap `store` at the bottom of this file.
  */
-export interface TabStore {
-  list(): Promise<Tab[]>
-  get(id: string): Promise<Tab | undefined>
-  save(tab: Tab): Promise<void>
+export interface SongStore {
+  list(): Promise<Song[]>
+  get(id: string): Promise<Song | undefined>
+  save(song: Song): Promise<void>
   remove(id: string): Promise<void>
   clear(): Promise<void>
 }
@@ -18,12 +18,39 @@ export interface TabStore {
 interface TabVaultDB extends DBSchema {
   tabs: {
     key: string
-    value: Tab
+    value: Song
     indexes: { 'by-updated': string }
   }
 }
 
-class IndexedDbStore implements TabStore {
+/** Older records stored a single `instrument`; normalise them to `instruments[]`. */
+function normalise(raw: unknown): Song | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Partial<Song> & { instrument?: string }
+  if (typeof r.tex !== 'string' || typeof r.id !== 'string') return undefined
+  let instruments: Instrument[] = Array.isArray(r.instruments)
+    ? r.instruments.filter((i): i is Instrument => INSTRUMENT_ORDER.includes(i as Instrument))
+    : []
+  if (!instruments.length && r.instrument) {
+    const legacy = r.instrument === 'multi' ? ['guitar', 'bass', 'drums'] : [r.instrument]
+    instruments = legacy.filter((i): i is Instrument => INSTRUMENT_ORDER.includes(i as Instrument))
+  }
+  const now = new Date().toISOString()
+  return {
+    id: r.id,
+    title: r.title ?? '',
+    artist: r.artist ?? '',
+    instruments,
+    tags: Array.isArray(r.tags) ? r.tags.filter((t): t is string => typeof t === 'string') : [],
+    tex: r.tex,
+    tempo: typeof r.tempo === 'number' ? r.tempo : null,
+    notes: r.notes ?? '',
+    createdAt: r.createdAt ?? now,
+    updatedAt: r.updatedAt ?? now,
+  }
+}
+
+class IndexedDbStore implements SongStore {
   private dbPromise: Promise<IDBPDatabase<TabVaultDB>>
 
   constructor() {
@@ -38,17 +65,20 @@ class IndexedDbStore implements TabStore {
   async list() {
     const db = await this.dbPromise
     const all = await db.getAllFromIndex('tabs', 'by-updated')
-    return all.reverse()
+    return all
+      .reverse()
+      .map(normalise)
+      .filter((s): s is Song => !!s)
   }
 
   async get(id: string) {
     const db = await this.dbPromise
-    return db.get('tabs', id)
+    return normalise(await db.get('tabs', id))
   }
 
-  async save(tab: Tab) {
+  async save(song: Song) {
     const db = await this.dbPromise
-    await db.put('tabs', tab)
+    await db.put('tabs', song)
   }
 
   async remove(id: string) {
@@ -62,20 +92,20 @@ class IndexedDbStore implements TabStore {
   }
 }
 
-export const store: TabStore = new IndexedDbStore()
+export const store: SongStore = new IndexedDbStore()
 
 export function newId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function emptyTab(): Tab {
+export function emptySong(): Song {
   const now = new Date().toISOString()
   return {
     id: newId(),
     title: '',
     artist: '',
-    instrument: 'guitar',
+    instruments: [],
     tags: [],
     tex: '',
     tempo: null,
@@ -88,29 +118,24 @@ export function emptyTab(): Tab {
 export async function exportBackup(): Promise<BackupFile> {
   return {
     app: 'tabvault',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
-    tabs: await store.list(),
+    songs: await store.list(),
   }
 }
 
 export async function importBackup(json: unknown): Promise<number> {
-  if (!json || typeof json !== 'object') throw new Error('Archivo no válido')
-  const data = json as Partial<BackupFile>
-  if (data.app !== 'tabvault' || !Array.isArray(data.tabs)) {
-    throw new Error('Este archivo no es una copia de seguridad de TabVault')
+  if (!json || typeof json !== 'object') throw new Error('Not a valid file')
+  const data = json as Partial<BackupFile> & { tabs?: unknown[] }
+  const items = Array.isArray(data.songs) ? data.songs : Array.isArray(data.tabs) ? data.tabs : null
+  if (data.app !== 'tabvault' || !items) {
+    throw new Error('This file is not a TabVault backup')
   }
   let count = 0
-  for (const raw of data.tabs) {
-    if (!raw || typeof raw !== 'object' || typeof (raw as Tab).tex !== 'string') continue
-    const base = emptyTab()
-    const tab: Tab = {
-      ...base,
-      ...raw,
-      id: typeof raw.id === 'string' && raw.id ? raw.id : base.id,
-      tags: Array.isArray(raw.tags) ? raw.tags.filter((t) => typeof t === 'string') : [],
-    }
-    await store.save(tab)
+  for (const raw of items) {
+    const song = normalise(raw)
+    if (!song) continue
+    await store.save(song)
     count++
   }
   return count
@@ -126,10 +151,10 @@ export function downloadJson(filename: string, data: unknown) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-const SEED_KEY = 'tabvault.seeded'
+const SEED_KEY = 'tabvault.seeded.v2'
 let seeding: Promise<void> | null = null
 
-/** La primera vez que se abre la app en un navegador se cargan las tablaturas de ejemplo. */
+/** First launch in a browser: load the example songs. */
 export function ensureSeeded(): Promise<void> {
   if (!seeding) {
     seeding = (async () => {
@@ -141,13 +166,18 @@ export function ensureSeeded(): Promise<void> {
       }
       if (done) return
       const existing = await store.list()
-      if (existing.length === 0) {
-        for (const sample of SAMPLE_TABS) await store.save(sample)
+      // Replace the old per-instrument examples with the new multi-track ones
+      for (const legacyId of ['sample-guitar', 'sample-bass', 'sample-drums', 'sample-band']) {
+        if (existing.some((s) => s.id === legacyId)) await store.remove(legacyId)
+      }
+      const remaining = existing.filter((s) => !s.id.startsWith('sample-'))
+      if (remaining.length === 0) {
+        for (const sample of SAMPLE_SONGS) await store.save(sample)
       }
       try {
         localStorage.setItem(SEED_KEY, '1')
       } catch {
-        // sin localStorage no pasa nada: la comprobación de lista vacía evita duplicados
+        // no localStorage: the empty-list check above still prevents duplicates
       }
     })()
   }

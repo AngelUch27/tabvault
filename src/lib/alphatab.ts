@@ -1,5 +1,5 @@
 import * as alphaTab from '@coderline/alphatab'
-import type { Instrument } from './types'
+import { INSTRUMENT_ORDER, type Instrument } from './types'
 
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`
 
@@ -13,37 +13,12 @@ function baseSettings(): alphaTab.Settings {
   return settings
 }
 
-export interface ScoreMeta {
-  title: string
-  artist: string
-  tempo: number
-  tracks: { index: number; name: string; isPercussion: boolean; tuning: string }[]
-  barCount: number
-}
-
-/** Analiza alphaTex sin renderizar. Lanza si hay errores de sintaxis. */
+/** Parses alphaTex without rendering. Throws on syntax errors. */
 export function parseTex(tex: string): alphaTab.model.Score {
   return alphaTab.importer.ScoreLoader.loadAlphaTex(tex, baseSettings())
 }
 
-export function scoreMeta(score: alphaTab.model.Score): ScoreMeta {
-  return {
-    title: score.title,
-    artist: score.artist,
-    tempo: score.tempo,
-    barCount: score.masterBars.length,
-    tracks: score.tracks.map((t) => ({
-      index: t.index,
-      name: t.name,
-      isPercussion: t.staves.some((s) => s.isPercussion),
-      tuning: t.staves[0]?.tuning?.length
-        ? t.staves[0].tuning.map((v) => alphaTab.model.Tuning.getTextForTuning(v, false)).join(' ')
-        : '',
-    })),
-  }
-}
-
-/** Convierte un archivo (Guitar Pro 3-8, MusicXML, CapXML) a alphaTex. */
+/** Converts a file (Guitar Pro 3-8, MusicXML, CapXML) into alphaTex. */
 export function fileToTex(bytes: Uint8Array): { tex: string; score: alphaTab.model.Score } {
   const settings = baseSettings()
   const score = alphaTab.importer.ScoreLoader.loadScoreFromBytes(bytes, settings)
@@ -52,10 +27,8 @@ export function fileToTex(bytes: Uint8Array): { tex: string; score: alphaTab.mod
   return { tex, score }
 }
 
-export function guessInstrument(score: alphaTab.model.Score): Instrument {
-  if (score.tracks.length > 1) return 'multi'
-  const track = score.tracks[0]
-  if (!track) return 'other'
+/** Classifies a single track by its MIDI program / tuning. */
+export function trackInstrument(track: alphaTab.model.Track): Instrument {
   if (track.staves.some((s) => s.isPercussion)) return 'drums'
   const program = track.playbackInfo.program
   if (program >= 32 && program <= 39) return 'bass'
@@ -66,14 +39,20 @@ export function guessInstrument(score: alphaTab.model.Score): Instrument {
   return 'other'
 }
 
+/** Distinct instruments in a score, in display order. */
+export function scoreInstruments(score: alphaTab.model.Score): Instrument[] {
+  const set = new Set(score.tracks.map(trackInstrument))
+  return INSTRUMENT_ORDER.filter((i) => set.has(i))
+}
+
 export function texErrorMessage(err: unknown): string {
-  // alphaTab envuelve el error de sintaxis en UnsupportedFormatError; el detalle está en cause
+  // alphaTab wraps syntax errors in UnsupportedFormatError; the details live in `cause`
   if (err instanceof Error && err.cause instanceof alphaTab.importer.AlphaTexErrorWithDiagnostics) err = err.cause
   if (err instanceof alphaTab.importer.AlphaTexErrorWithDiagnostics) {
     const diags = [...err.iterateDiagnostics()]
       .filter((d) => d.severity === alphaTab.importer.alphaTex.AlphaTexDiagnosticsSeverity.Error)
       .slice(0, 5)
-      .map((d) => `Línea ${d.start?.line ?? "?"}, col ${d.start?.col ?? "?"}: ${d.message}`)
+      .map((d) => `Line ${d.start?.line ?? '?'}, col ${d.start?.col ?? '?'}: ${d.message}`)
     return diags.length ? diags.join('\n') : err.message
   }
   if (err instanceof Error) return err.message

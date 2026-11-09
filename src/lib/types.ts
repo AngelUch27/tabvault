@@ -1,12 +1,17 @@
-export type Instrument = 'guitar' | 'bass' | 'drums' | 'multi' | 'other'
+export type Instrument = 'guitar' | 'bass' | 'drums' | 'other'
 
-export interface Tab {
+/**
+ * A song. One song can hold several tracks (guitar, bass, drums…) inside the
+ * same alphaTex source; the player lets you pick which one to look at.
+ */
+export interface Song {
   id: string
   title: string
   artist: string
-  instrument: Instrument
+  /** Instruments present in the tracks, derived from the alphaTex when saving. */
+  instruments: Instrument[]
   tags: string[]
-  /** Contenido en formato alphaTex. Es la única fuente de verdad de la partitura. */
+  /** alphaTex source. This is the single source of truth for the score. */
   tex: string
   tempo: number | null
   notes: string
@@ -15,16 +20,17 @@ export interface Tab {
 }
 
 export const INSTRUMENT_LABELS: Record<Instrument, string> = {
-  guitar: 'Guitarra',
-  bass: 'Bajo',
-  drums: 'Batería',
-  multi: 'Varios',
-  other: 'Otro',
+  guitar: 'Guitar',
+  bass: 'Bass',
+  drums: 'Drums',
+  other: 'Other',
 }
+
+export const INSTRUMENT_ORDER: Instrument[] = ['guitar', 'bass', 'drums', 'other']
 
 export interface BackupFile {
   app: 'tabvault'
-  version: 1
+  version: 2
   exportedAt: string
-  tabs: Tab[]
+  songs: Song[]
 }
