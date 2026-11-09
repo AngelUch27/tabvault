@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import TabViewer from '../components/TabViewer'
-import { store } from '../lib/storage'
+import { ensureSeeded, store } from '../lib/storage'
 import { INSTRUMENT_LABELS, type Tab } from '../lib/types'
 
 export default function Player() {
@@ -12,7 +12,9 @@ export default function Player() {
 
   useEffect(() => {
     if (!id) return
-    store.get(id).then((t) => setTab(t ?? null))
+    ensureSeeded()
+      .then(() => store.get(id))
+      .then((t) => setTab(t ?? null))
   }, [id])
 
   const onDelete = async () => {

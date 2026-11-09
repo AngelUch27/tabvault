@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { fileToTex, guessInstrument } from '../lib/alphatab'
-import { SAMPLE_TABS } from '../lib/samples'
-import { downloadJson, emptyTab, exportBackup, importBackup, store } from '../lib/storage'
+import { downloadJson, emptyTab, ensureSeeded, exportBackup, importBackup, store } from '../lib/storage'
 import { INSTRUMENT_LABELS, type Instrument, type Tab } from '../lib/types'
 
-const SEED_KEY = 'tabvault.seeded'
 const FILTERS: (Instrument | 'all')[] = ['all', 'guitar', 'bass', 'drums', 'multi', 'other']
 
 export default function Library() {
@@ -20,16 +18,7 @@ export default function Library() {
   const reload = async () => setTabs(await store.list())
 
   useEffect(() => {
-    ;(async () => {
-      const list = await store.list()
-      if (list.length === 0 && !localStorage.getItem(SEED_KEY)) {
-        for (const sample of SAMPLE_TABS) await store.save(sample)
-        localStorage.setItem(SEED_KEY, '1')
-        setTabs(await store.list())
-      } else {
-        setTabs(list)
-      }
-    })()
+    ensureSeeded().then(reload)
   }, [])
 
   const filtered = useMemo(() => {

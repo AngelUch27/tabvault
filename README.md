@@ -49,6 +49,10 @@ Eso compila con la ruta base `/tabvault/` y sube la carpeta `dist` a la rama `gh
 Luego en GitHub: Settings → Pages → Source: rama `gh-pages`. La app queda en
 `https://<usuario>.github.io/tabvault/`.
 
+Si `npm run deploy` falla con "Filename too long" (pasa cuando la carpeta del proyecto tiene una ruta muy larga en Windows), ejecuta `git config --global core.longpaths true` o mueve el proyecto a una ruta corta como `C:dev	abvault`.
+
+La app está publicada en https://angeluch27.github.io/tabvault/.
+
 Si el repositorio se llama distinto, cambia `--base=/tabvault/` en `package.json` por el nombre nuevo.
 
 ## Escribir tablaturas (alphaTex en 1 minuto)

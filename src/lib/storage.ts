@@ -1,4 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
+import { SAMPLE_TABS } from './samples'
 import type { BackupFile, Tab } from './types'
 
 /**
@@ -123,4 +124,32 @@ export function downloadJson(filename: string, data: unknown) {
   a.download = filename
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+const SEED_KEY = 'tabvault.seeded'
+let seeding: Promise<void> | null = null
+
+/** La primera vez que se abre la app en un navegador se cargan las tablaturas de ejemplo. */
+export function ensureSeeded(): Promise<void> {
+  if (!seeding) {
+    seeding = (async () => {
+      let done = false
+      try {
+        done = !!localStorage.getItem(SEED_KEY)
+      } catch {
+        done = false
+      }
+      if (done) return
+      const existing = await store.list()
+      if (existing.length === 0) {
+        for (const sample of SAMPLE_TABS) await store.save(sample)
+      }
+      try {
+        localStorage.setItem(SEED_KEY, '1')
+      } catch {
+        // sin localStorage no pasa nada: la comprobación de lista vacía evita duplicados
+      }
+    })()
+  }
+  return seeding
 }
